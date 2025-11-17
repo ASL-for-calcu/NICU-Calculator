@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NICU泵点药物计算器测试版</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 400px; margin: 0 auto; }
+        .card { background: white; padding: 20px; margin: 10px 0; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        h1 { text-align: center; margin-bottom: 20px; color: #333; }
+        .input-group { margin: 15px 0; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; }
+        button { width: 100%; padding: 12px; background: #2196F3; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; }
+        button:hover { background: #1976D2; }
+        .result { background: #e8f5e8; padding: 15px; border-radius: 5px; margin-top: 10px; display: none; }
+        .error { background: #ffebee; color: #c62828; padding: 10px; border-radius: 5px; margin: 10px 0; display: none; }
+        .checkbox-group { display: flex; align-items: center; margin: 10px 0; }
+        .checkbox-group input { width: auto; margin-right: 8px; }
+        .note { font-size: 12px; color: #666; margin-top: 5px; }
+        .combination-group { display: none; background: #f0f8ff; padding: 10px; border-radius: 5px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>NICU泵点药物计算器测试版</h1>
+        
+        <div class="card">
+            <div class="input-group">
+                <label>选择药物：</label>
+                <select id="drugSelect">
+                    <option value="多巴胺">多巴胺 (2ml/20mg)</option>
+                    <option value="多巴酚丁胺">多巴酚丁胺 (5ml/100mg)</option>
+                    <option value="咪达唑仑">咪达唑仑 (1ml/5mg)</option>
+                    <option value="米力农">米力农 (5ml/5mg)</option>
+                    <option value="肾上腺素">肾上腺素 (1ml/1mg)</option>
+                    <option value="去甲肾上腺素">去甲肾上腺素 (1ml/2mg)</option>
+                    <option value="尼卡地平">尼卡地平 (10ml/10mg)</option>
+                    <option value="芬太尼">芬太尼 (2ml/0.1mg)</option>
+                    <option value="前列地尔">前列地尔 (2ml/10ug)</option>
+                </select>
+            </div>
+            
+            <!-- 多巴胺与多巴酚丁胺联用选项 -->
+            <div id="combinationGroup" class="combination-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" id="useCombination">
+                    <label for="useCombination">与多巴酚丁胺联用（两者配制在一起，泵速一致）</label>
+                </div>
+            </div>
+            
+            <div class="input-group">
+                <label>体重 (kg)：</label>
+                <input type="number" id="weight" placeholder="请输入体重" step="0.1">
+            </div>
+            
+            <div class="input-group">
+                <label id="rateLabel">目标泵速：</label>
+                <input type="number" id="targetRate" placeholder="请输入目标泵速" step="0.1">
+            </div>
+            
+            <div class="checkbox-group">
+                <input type="checkbox" id="useWholeAmpoule">
+                <label for="useWholeAmpoule">按整支药物计算</label>
+            </div>
+            
+            <div class="input-group" id="durationGroup">
+                <label>泵点小时数 (h)：</label>
+                <input type="number" id="duration" placeholder="请输入小时数" step="0.1" value="24">
+            </div>
+            
+            <div class="input-group">
+                <label>目标液速 (ml/h)：</label>
+                <input type="number" id="infusionRate" placeholder="请输入液速" step="0.1" value="0.5">
+            </div>
+            
+            <button onclick="calculate()">计算</button>
+        </div>
+        
+        <div id="error" class="error"></div>
+        
+        <div id="result" class="result card">
+            <h3>计算结果：</h3>
+            <p id="drugAmount"></p>
+            <p id="liquidVolume"></p>
+            <p id="additionalInfo"></p>
+        </div>
+    </div>
+
+    <script>
+        const drugs = {
+            '多巴胺': { 
+                concentration: 10, // 20mg/2ml = 10mg/ml
+                unit: 'ug/kg/min', 
+                spec: '2ml/20mg',
+                ampouleVolume: 2,
+                ampouleDose: 20
+            },
+            '多巴酚丁胺': { 
+                concentration: 20, // 100mg/5ml = 20mg/ml
+                unit: 'ug/kg/min', 
+                spec: '5ml/100mg',
+                ampouleVolume: 5,
+                ampouleDose: 100
+            },
+            '咪达唑仑': { 
+                concentration: 5,
+                unit: 'ug/kg/min', 
+                spec: '1ml/5mg',
+                ampouleVolume: 1,
+                ampouleDose: 5
+            },
+            '米力农': { 
+                concentration: 1,
+                unit: 'ug/kg/min', 
+                spec: '5ml/5mg',
+                ampouleVolume: 5,
+                ampouleDose: 5
+            },
+            '肾上腺素': { 
+                concentration: 1,
+                unit: 'ug/kg/min', 
+                spec: '1ml/1mg',
+                ampouleVolume: 1,
+                ampouleDose: 1
+            },
+            '去甲肾上腺素': { 
+                concentration: 2,
+                unit: 'ug/kg/min', 
+                spec: '1ml/2mg',
+                ampouleVolume: 1,
+                ampouleDose: 2
+            },
+            '尼卡地平': { 
+                concentration: 1,
+                unit: 'ug/kg/min', 
+                spec: '10ml/10mg',
+                ampouleVolume: 10,
+                ampouleDose: 10
+            },
+            '芬太尼': { 
+                concentration: 0.05,
+                unit: 'ug/kg/h', 
+                spec: '2ml/0.1mg',
+                ampouleVolume: 2,
+                ampouleDose: 0.1
+            },
+            '前列地尔': { 
+                concentration: 5,
+                unit: 'ng/kg/min', 
+                spec: '2ml/10ug',
+                ampouleVolume: 2,
+                ampouleDose: 10
+            }
+        };
+
+        function updateRateLabel() {
+            const drug = document.getElementById('drugSelect').value;
+            const unit = drugs[drug].unit;
+            const label = document.getElementById('rateLabel');
+            
+            if (unit === 'ug/kg/min') label.textContent = '目标泵速 (μg/kg/min)：';
+            else if (unit === 'ug/kg/h') label.textContent = '目标泵速 (μg/kg/h)：';
+            else if (unit === 'ng/kg/min') label.textContent = '目标泵速 (ng/kg/min)：';
+        }
+
+        function updateCombinationOption() {
+            const drug = document.getElementById('drugSelect').value;
+            const combinationGroup = document.getElementById('combinationGroup');
+            
+            if (drug === '多巴胺') {
+                combinationGroup.style.display = 'block';
+            } else {
+                combinationGroup.style.display = 'none';
+                document.getElementById('useCombination').checked = false;
+            }
+        }
+
+        function calculate() {
+            const drugName = document.getElementById('drugSelect').value;
+            const drug = drugs[drugName];
+            const weight = parseFloat(document.getElementById('weight').value);
+            const targetRate = parseFloat(document.getElementById('targetRate').value);
+            const duration = parseFloat(document.getElementById('duration').value);
+            const infusionRate = parseFloat(document.getElementById('infusionRate').value);
+            const useWholeAmpoule = document.getElementById('useWholeAmpoule').checked;
+            const useCombination = document.getElementById('useCombination').checked;
+            
+            // 隐藏错误和结果
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('result').style.display = 'none';
+            
+            // 验证输入
+            if (!weight || !targetRate || !duration || !infusionRate) {
+                showError('请填写所有参数');
+                return;
+            }
+            
+            if (weight <= 0 || targetRate <= 0 || duration <= 0 || infusionRate <= 0) {
+                showError('所有参数必须大于0');
+                return;
+            }
+            
+            try {
+                let drugAmount, drugVolume, totalLiquidVolume, diluentVolume, additionalInfo = '';
+                
+                if (useCombination && drugName === '多巴胺') {
+                    // 多巴胺与多巴酚丁胺联用计算
+                    const dopamine = drugs['多巴胺'];
+                    const dobutamine = drugs['多巴酚丁胺'];
+                    
+                    let dopamineAmount, dobutamineAmount, dopamineVolume, dobutamineVolume;
+                    
+                    if (useWholeAmpoule) {
+                        // 多巴胺整支计算
+                        const dopamineRequired = calculateRequiredDose(dopamine, weight, targetRate, duration);
+                        const dopamineAmpoules = Math.ceil(dopamineRequired / dopamine.ampouleDose);
+                        dopamineAmount = dopamineAmpoules * dopamine.ampouleDose;
+                        dopamineVolume = dopamineAmpoules * dopamine.ampouleVolume;
+                        
+                        // 多巴酚丁胺整支计算
+                        const dobutamineRequired = calculateRequiredDose(dobutamine, weight, targetRate, duration);
+                        const dobutamineAmpoules = Math.ceil(dobutamineRequired / dobutamine.ampouleDose);
+                        dobutamineAmount = dobutamineAmpoules * dobutamine.ampouleDose;
+                        dobutamineVolume = dobutamineAmpoules * dobutamine.ampouleVolume;
+                        
+                        // 重新计算实际泵点时间（取两者中较短的时间）
+                        const dopamineDuration = calculateActualDuration(dopamine, weight, targetRate, dopamineAmount);
+                        const dobutamineDuration = calculateActualDuration(dobutamine, weight, targetRate, dobutamineAmount);
+                        const actualDuration = Math.min(dopamineDuration, dobutamineDuration);
+                        
+                        totalLiquidVolume = infusionRate * actualDuration;
+                        drugVolume = dopamineVolume + dobutamineVolume;
+                        diluentVolume = totalLiquidVolume - drugVolume;
+                        
+                        additionalInfo = `多巴胺使用${dopamineAmpoules}支，多巴酚丁胺使用${dobutamineAmpoules}支，实际泵点时间：${actualDuration.toFixed(1)}小时`;
+                        
+                    } else {
+                        // 精确计算
+                        dopamineAmount = calculateRequiredDose(dopamine, weight, targetRate, duration);
+                        dobutamineAmount = calculateRequiredDose(dobutamine, weight, targetRate, duration);
+                        dopamineVolume = dopamineAmount / dopamine.concentration;
+                        dobutamineVolume = dobutamineAmount / dobutamine.concentration;
+                        
+                        totalLiquidVolume = infusionRate * duration;
+                        drugVolume = dopamineVolume + dobutamineVolume;
+                        diluentVolume = totalLiquidVolume - drugVolume;
+                    }
+                    
+                    drugAmount = {
+                        dopamine: dopamineAmount,
+                        dobutamine: dobutamineAmount
+                    };
+                    
+                } else {
+                    // 单药计算
+                    if (useWholeAmpoule) {
+                        const requiredDose = calculateRequiredDose(drug, weight, targetRate, duration);
+                        const ampoulesNeeded = Math.ceil(requiredDose / drug.ampouleDose);
+                        const actualDrugAmount = ampoulesNeeded * drug.ampouleDose;
+                        drugVolume = ampoulesNeeded * drug.ampouleVolume;
+                        
+                        const actualDuration = calculateActualDuration(drug, weight, targetRate, actualDrugAmount);
+                        
+                        totalLiquidVolume = infusionRate * actualDuration;
+                        diluentVolume = totalLiquidVolume - drugVolume;
+                        
+                        drugAmount = actualDrugAmount;
+                        additionalInfo = `使用${ampoulesNeeded}支药物，实际泵点时间：${actualDuration.toFixed(1)}小时`;
+                        
+                    } else {
+                        drugAmount = calculateRequiredDose(drug, weight, targetRate, duration);
+                        drugVolume = drugAmount / drug.concentration;
+                        totalLiquidVolume = infusionRate * duration;
+                        diluentVolume = totalLiquidVolume - drugVolume;
+                    }
+                }
+                
+                if (diluentVolume < 0) {
+                    showError('目标液速过低，无法容纳药物体积。请提高目标液速。');
+                    return;
+                }
+                
+                // 显示结果
+                const unit = drug.unit === 'ng/kg/min' ? 'μg' : 'mg';
+                
+                if (useCombination && drugName === '多巴胺') {
+                    document.getElementById('drugAmount').innerHTML = 
+                        `多巴胺配制量：${drugAmount.dopamine.toFixed(2)} mg<br>` +
+                        `多巴酚丁胺配制量：${drugAmount.dobutamine.toFixed(2)} mg`;
+                } else {
+                    document.getElementById('drugAmount').textContent = 
+                        `配制药物量：${drugAmount.toFixed(2)} ${unit}`;
+                }
+                
+                document.getElementById('liquidVolume').textContent = 
+                    `配液量：${diluentVolume.toFixed(2)} ml (总液量${totalLiquidVolume.toFixed(2)} ml，含药物${drugVolume.toFixed(2)} ml)`;
+                document.getElementById('additionalInfo').textContent = additionalInfo;
+                document.getElementById('result').style.display = 'block';
+                
+            } catch (error) {
+                showError('计算错误：' + error.message);
+            }
+        }
+
+        function calculateRequiredDose(drug, weight, targetRate, duration) {
+            if (drug.unit === 'ug/kg/min') {
+                return targetRate * weight * 60 * duration / 1000; // 转为mg
+            } else if (drug.unit === 'ug/kg/h') {
+                return targetRate * weight * duration / 1000; // 转为mg
+            } else if (drug.unit === 'ng/kg/min') {
+                return targetRate * weight * 60 * duration / 1000; // 转为ug
+            }
+            return 0;
+        }
+
+        function calculateActualDuration(drug, weight, targetRate, actualDrugAmount) {
+            if (drug.unit === 'ug/kg/min') {
+                return (actualDrugAmount * 1000) / (targetRate * weight * 60);
+            } else if (drug.unit === 'ug/kg/h') {
+                return (actualDrugAmount * 1000) / (targetRate * weight);
+            } else if (drug.unit === 'ng/kg/min') {
+                return (actualDrugAmount * 1000) / (targetRate * weight * 60);
+            }
+            return 0;
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+        
+        // 初始化
+        document.getElementById('drugSelect').addEventListener('change', function() {
+            updateRateLabel();
+            updateCombinationOption();
+        });
+        updateRateLabel();
+        updateCombinationOption();
+    </script>
+</body>
+</html>
